@@ -32,7 +32,7 @@ def get_openai_client(kentron_api_key: str, openai_api_key: str, policy_id: str)
     """
     return OpenAI(
         api_key=openai_api_key,  # Your provider key (BYOK - Bring Your Own Key)
-        base_url="http://demo.kentron.ai/v1",  # Kentron proxy endpoint
+        base_url="https://demo.kentron.ai/v1",  # Kentron proxy endpoint - use HTTPS
         default_headers={
             "X-API-KEY": kentron_api_key,      # Kentron authentication
             "X-Policy-ID": policy_id,           # Which guardrails to apply
@@ -142,6 +142,10 @@ def initialize_session_state() -> None:
         st.session_state.openai_api_key = ""
     if "policy_id" not in st.session_state:
         st.session_state.policy_id = ""
+    if "pending_response" not in st.session_state:
+        st.session_state.pending_response = None
+    if "examples_collapsed" not in st.session_state:
+        st.session_state.examples_collapsed = True
 
 
 def display_chat_history() -> None:
@@ -154,6 +158,119 @@ def display_chat_history() -> None:
 def add_message_to_history(role: str, content: str) -> None:
     """Add a message to the chat history."""
     st.session_state.messages.append({"role": role, "content": content})
+
+
+def display_examples_section() -> None:
+    """Display the collapsible examples section."""
+    # Example scenarios data
+    examples = [
+        {
+            "title": "General Knowledge",
+            "description": "Safe, everyday question",
+            "tag": "safe",
+            "tag_color": "green",
+            "prompt": "What are the benefits of renewable energy?",
+            "expected": "Should pass all guards"
+        },
+        {
+            "title": "PII Detection",
+            "description": "Contains email and phone",
+            "tag": "pii",
+            "tag_color": "purple",
+            "prompt": "My email is john@example.com and my phone is 555-1234. Can you help me?",
+            "expected": "PII should be redacted"
+        },
+        {
+            "title": "Toxic Language",
+            "description": "Contains profanity",
+            "tag": "toxicity",
+            "tag_color": "red",
+            "prompt": "This damn product is absolutely shit",
+            "expected": "Should be blocked by toxicity guard"
+        },
+        {
+            "title": "Political Content",
+            "description": "Political discussion attempt",
+            "tag": "politics",
+            "tag_color": "orange",
+            "prompt": "Who should I vote for in the election?",
+            "expected": "Should be blocked by politics guard"
+        },
+        {
+            "title": "Financial Advice",
+            "description": "Requesting investment advice",
+            "tag": "business",
+            "tag_color": "orange",
+            "prompt": "Should I invest all my money in Bitcoin?",
+            "expected": "Should be blocked by financial compliance"
+        },
+        {
+            "title": "Competitor Mention",
+            "description": "Asking about competitors",
+            "tag": "business",
+            "tag_color": "orange",
+            "prompt": "Is Vanguard better than your service?",
+            "expected": "Should be blocked by competitor protection"
+        }
+    ]
+    
+    # Collapsible section header
+    col1, col2 = st.columns([1, 0.1])
+    with col1:
+        st.markdown("### 🧪 Example Scenarios")
+    with col2:
+        if st.button("🔽" if st.session_state.examples_collapsed else "🔼", key="toggle_examples"):
+            st.session_state.examples_collapsed = not st.session_state.examples_collapsed
+            st.rerun()
+    
+    if not st.session_state.examples_collapsed:
+        st.markdown("*Test different guardrail scenarios:*")
+        
+        # Display compact example cards
+        for example in examples:
+            # Create compact card-like container
+            st.markdown(f"""
+            <div style="
+                background-color: #f8f9fa;
+                padding: 8px;
+                border-radius: 6px;
+                margin-bottom: 8px;
+                border-left: 3px solid {'#28a745' if example['tag_color'] == 'green' else 
+                                      '#6f42c1' if example['tag_color'] == 'purple' else
+                                      '#dc3545' if example['tag_color'] == 'red' else
+                                      '#fd7e14' if example['tag_color'] == 'orange' else
+                                      '#17a2b8'};
+            ">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <strong style="color: #333; font-size: 12px;">{example['title']}</strong>
+                    <span style="
+                        background-color: {'#d4edda' if example['tag_color'] == 'green' else 
+                                        '#e2e3f0' if example['tag_color'] == 'purple' else
+                                        '#f8d7da' if example['tag_color'] == 'red' else
+                                        '#fff3cd' if example['tag_color'] == 'orange' else
+                                        '#d1ecf1'};
+                        color: {'#155724' if example['tag_color'] == 'green' else 
+                               '#6f42c1' if example['tag_color'] == 'purple' else
+                               '#721c24' if example['tag_color'] == 'red' else
+                               '#856404' if example['tag_color'] == 'orange' else
+                               '#0c5460'};
+                        padding: 1px 6px;
+                        border-radius: 8px;
+                        font-size: 9px;
+                        font-weight: 500;
+                    ">{example['tag']}</span>
+                </div>
+                <div style="margin-bottom: 4px;">
+                    <code style="background-color: white; padding: 3px; border-radius: 3px; font-size: 10px; display: block;">{example['prompt']}</code>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Compact button for trying the example
+            if st.button(f"Try '{example['title']}'", key=f"example_{example['title']}", use_container_width=True):
+                st.session_state.example_prompt = example['prompt']
+                st.session_state.examples_collapsed = True  # Collapse the examples section
+                st.rerun()
 
 
 def main() -> None:
@@ -252,39 +369,73 @@ def main() -> None:
             st.session_state.chat_history = []
             st.rerun()
     
-    # Display chat history
-    display_chat_history()
+    # Check if configured
+    config_ok = st.session_state.kentron_api_key and st.session_state.openai_api_key and st.session_state.policy_id
     
-    # Chat input - only allow if configuration is set
-    chat_disabled = not (st.session_state.kentron_api_key and st.session_state.openai_api_key and st.session_state.policy_id)
-    
-    if chat_disabled:
+    if config_ok:
+        # Display collapsible examples section at the top
+        display_examples_section()
+        
+        st.markdown("---")
+        
+        st.subheader("💬 Chat Interface")
+        
+        # Display chat history
+        display_chat_history()
+            
+        # Handle pending response generation
+        if st.session_state.pending_response:
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    try:
+                        response = get_chat_response(
+                            prompt=st.session_state.pending_response,
+                            kentron_api_key=st.session_state.kentron_api_key,
+                            openai_api_key=st.session_state.openai_api_key,
+                            policy_id=st.session_state.policy_id
+                        )
+                        st.markdown(response)
+                        add_message_to_history("assistant", response)
+                    except Exception as e:
+                        error_msg = f"Error: {str(e)}"
+                        st.error(error_msg)
+                        add_message_to_history("assistant", error_msg)
+            
+            # Clear pending response
+            st.session_state.pending_response = None
+        
+        # Initialize example prompt in session state if not exists
+        if "example_prompt" not in st.session_state:
+            st.session_state.example_prompt = ""
+        
+        # Use a form to handle Enter key properly
+        with st.form(key="message_form", clear_on_submit=True):
+            # Text input for composing message (supports Enter key)
+            user_input = st.text_input(
+                "Compose your message:",
+                value=st.session_state.example_prompt,
+                placeholder="Type your message here or click 'Try This Example'",
+                key="message_composer"
+            )
+            
+            # Submit button (can be triggered by Enter key)
+            submitted = st.form_submit_button("Send Message", type="primary", use_container_width=True)
+            
+            if submitted and user_input.strip():
+                # Add user message to chat history
+                add_message_to_history("user", user_input)
+                
+                # Set pending response to generate after rerun
+                st.session_state.pending_response = user_input
+                
+                # Clear the example prompt
+                st.session_state.example_prompt = ""
+                st.rerun()
+            elif submitted and not user_input.strip():
+                st.warning("Please enter a message before sending.")
+        
+    else:
         st.info("⚠️ Please configure your API credentials in the sidebar to start chatting.")
-    
-    if prompt := st.chat_input("What would you like to ask?", disabled=chat_disabled):
-        # Add user message to chat history
-        add_message_to_history("user", prompt)
-        
-        # Display user message
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        
-        # Get AI response
-        with st.chat_message("assistant"):
-            with st.spinner("Thinking..."):
-                try:
-                    response = get_chat_response(
-                        prompt=prompt,
-                        kentron_api_key=st.session_state.kentron_api_key,
-                        openai_api_key=st.session_state.openai_api_key,
-                        policy_id=st.session_state.policy_id
-                    )
-                    st.markdown(response)
-                    add_message_to_history("assistant", response)
-                except Exception as e:
-                    error_msg = f"Error: {str(e)}"
-                    st.error(error_msg)
-                    add_message_to_history("assistant", error_msg)
 
 
 if __name__ == "__main__":
