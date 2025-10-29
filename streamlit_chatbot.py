@@ -273,6 +273,7 @@ def display_examples_section() -> None:
                 # Set the example prompt in the text box so user can see and modify it
                 st.session_state.example_prompt = example['prompt']
                 st.session_state.examples_collapsed = True  # Collapse the examples section
+                # Force a rerun to update the text input
                 st.rerun()
 
 
@@ -425,6 +426,11 @@ def main() -> None:
             # Text input for composing message (Enter sends, Shift+Enter for new line)
             # Show example prompt if one is set, otherwise show placeholder
             initial_value = st.session_state.example_prompt if st.session_state.example_prompt else ""
+            
+            # Debug: Show current example_prompt value
+            if st.session_state.example_prompt:
+                st.caption(f"Debug: Example prompt set to: {st.session_state.example_prompt[:50]}...")
+            
             user_input = st.text_input(
                 "Compose your message:",
                 value=initial_value,
