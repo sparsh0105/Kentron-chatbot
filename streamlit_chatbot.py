@@ -431,14 +431,24 @@ def main() -> None:
             if st.session_state.example_prompt:
                 st.caption(f"Debug: Example prompt set to: {st.session_state.example_prompt[:50]}...")
             
-            user_input = st.text_input(
-                "Compose your message:",
-                value=initial_value,
-                placeholder="Type your message here or click 'Try This Example'",
-                key=f"message_composer_{len(st.session_state.messages)}",
-                help="Press Enter to send message",
-                autocomplete="off"
-            )
+            # Use a different approach for deployed environments
+            if st.session_state.example_prompt:
+                user_input = st.text_input(
+                    "Compose your message:",
+                    value=st.session_state.example_prompt,
+                    placeholder="Type your message here or click 'Try This Example'",
+                    key=f"message_composer_{len(st.session_state.messages)}",
+                    help="Press Enter to send message",
+                    autocomplete="off"
+                )
+            else:
+                user_input = st.text_input(
+                    "Compose your message:",
+                    placeholder="Type your message here or click 'Try This Example'",
+                    key=f"message_composer_{len(st.session_state.messages)}",
+                    help="Press Enter to send message",
+                    autocomplete="off"
+                )
             
             # Submit button (can be triggered by Enter key)
             submitted = st.form_submit_button("Send Message", type="primary", use_container_width=True)
