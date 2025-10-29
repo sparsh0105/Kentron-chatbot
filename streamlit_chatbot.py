@@ -146,6 +146,8 @@ def initialize_session_state() -> None:
         st.session_state.pending_response = None
     if "examples_collapsed" not in st.session_state:
         st.session_state.examples_collapsed = True
+    if "example_prompt" not in st.session_state:
+        st.session_state.example_prompt = ""
 
 
 def display_chat_history() -> None:
@@ -268,6 +270,7 @@ def display_examples_section() -> None:
             
             # Compact button for trying the example
             if st.button(f"Try '{example['title']}'", key=f"example_{example['title']}", use_container_width=True):
+                # Set the example prompt in the text box so user can see and modify it
                 st.session_state.example_prompt = example['prompt']
                 st.session_state.examples_collapsed = True  # Collapse the examples section
                 st.rerun()
@@ -280,6 +283,18 @@ def main() -> None:
         page_icon="🤖",
         layout="wide"
     )
+    
+    # Add CSS to disable autocomplete and suggestions
+    st.markdown("""
+    <style>
+    input[data-testid="stTextInput"] {
+        autocomplete: off !important;
+    }
+    input[data-testid="stTextInput"]::-webkit-autofill {
+        -webkit-autofill: off !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
     
     # Initialize session state
     initialize_session_state()
@@ -339,7 +354,8 @@ def main() -> None:
             value=st.session_state.policy_id,
             type="default",
             help="Policy ID for guardrails configuration. Change this to use a different policy.",
-            key="policy_id_input"
+            key="policy_id_input",
+            autocomplete="off"
         )
         
         # Save configuration button
@@ -401,21 +417,21 @@ def main() -> None:
                         st.error(error_msg)
                         add_message_to_history("assistant", error_msg)
             
-            # Clear pending response
-            st.session_state.pending_response = None
-        
-        # Initialize example prompt in session state if not exists
-        if "example_prompt" not in st.session_state:
-            st.session_state.example_prompt = ""
+        # Clear pending response
+        st.session_state.pending_response = None
         
         # Use a form to handle Enter key properly
         with st.form(key="message_form", clear_on_submit=True):
-            # Text input for composing message (supports Enter key)
+            # Text input for composing message (Enter sends, Shift+Enter for new line)
+            # Show example prompt if one is set, otherwise show placeholder
+            initial_value = st.session_state.example_prompt if st.session_state.example_prompt else ""
             user_input = st.text_input(
                 "Compose your message:",
-                value=st.session_state.example_prompt,
+                value=initial_value,
                 placeholder="Type your message here or click 'Try This Example'",
-                key="message_composer"
+                key=f"message_composer_{len(st.session_state.messages)}",
+                help="Press Enter to send message",
+                autocomplete="off"
             )
             
             # Submit button (can be triggered by Enter key)
@@ -428,7 +444,7 @@ def main() -> None:
                 # Set pending response to generate after rerun
                 st.session_state.pending_response = user_input
                 
-                # Clear the example prompt
+                # Clear the example prompt after sending
                 st.session_state.example_prompt = ""
                 st.rerun()
             elif submitted and not user_input.strip():
