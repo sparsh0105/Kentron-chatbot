@@ -421,50 +421,47 @@ def main() -> None:
         # Clear pending response
         st.session_state.pending_response = None
         
-        # Use a form to handle Enter key properly
-        with st.form(key="message_form", clear_on_submit=True):
-            # Text input for composing message (Enter sends, Shift+Enter for new line)
-            # Show example prompt if one is set, otherwise show placeholder
-            initial_value = st.session_state.example_prompt if st.session_state.example_prompt else ""
+        # Use st.chat_input for better deployed environment compatibility
+        if st.session_state.example_prompt:
+            # Show the example prompt and let user modify it
+            st.info(f"📝 Example prompt loaded: {st.session_state.example_prompt}")
             
-            # Debug: Show current example_prompt value
-            if st.session_state.example_prompt:
-                st.caption(f"Debug: Example prompt set to: {st.session_state.example_prompt[:50]}...")
+            # Use text_area to show the example prompt
+            user_input = st.text_area(
+                "Compose your message:",
+                value=st.session_state.example_prompt,
+                placeholder="Type your message here or click 'Try This Example'",
+                key=f"message_composer_{len(st.session_state.messages)}",
+                help="Press Ctrl+Enter to send message",
+                height=100
+            )
             
-            # Use a different approach for deployed environments
-            if st.session_state.example_prompt:
-                user_input = st.text_input(
-                    "Compose your message:",
-                    value=st.session_state.example_prompt,
-                    placeholder="Type your message here or click 'Try This Example'",
-                    key=f"message_composer_{len(st.session_state.messages)}",
-                    help="Press Enter to send message",
-                    autocomplete="off"
-                )
-            else:
-                user_input = st.text_input(
-                    "Compose your message:",
-                    placeholder="Type your message here or click 'Try This Example'",
-                    key=f"message_composer_{len(st.session_state.messages)}",
-                    help="Press Enter to send message",
-                    autocomplete="off"
-                )
+            # Submit button
+            submitted = st.button("Send Message", type="primary", use_container_width=True)
+        else:
+            # Regular chat input when no example prompt
+            user_input = st.text_input(
+                "Compose your message:",
+                placeholder="Type your message here or click 'Try This Example'",
+                key=f"message_composer_{len(st.session_state.messages)}",
+                help="Press Enter to send message",
+                autocomplete="off"
+            )
+            submitted = st.button("Send Message", type="primary", use_container_width=True)
+        
+        # Handle message submission
+        if submitted and user_input.strip():
+            # Add user message to chat history
+            add_message_to_history("user", user_input)
             
-            # Submit button (can be triggered by Enter key)
-            submitted = st.form_submit_button("Send Message", type="primary", use_container_width=True)
+            # Set pending response to generate after rerun
+            st.session_state.pending_response = user_input
             
-            if submitted and user_input.strip():
-                # Add user message to chat history
-                add_message_to_history("user", user_input)
-                
-                # Set pending response to generate after rerun
-                st.session_state.pending_response = user_input
-                
-                # Clear the example prompt after sending
-                st.session_state.example_prompt = ""
-                st.rerun()
-            elif submitted and not user_input.strip():
-                st.warning("Please enter a message before sending.")
+            # Clear the example prompt after sending
+            st.session_state.example_prompt = ""
+            st.rerun()
+        elif submitted and not user_input.strip():
+            st.warning("Please enter a message before sending.")
         
     else:
         st.info("⚠️ Please configure your API credentials in the sidebar to start chatting.")
