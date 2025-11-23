@@ -103,9 +103,13 @@ def _build_friendly_policy_violation_html(error_obj: Exception) -> Optional[str]
     except Exception:
         return None
 
-def get_openai_client(kentron_api_key: str, openai_api_key: str, policy_id: str) -> OpenAI:
-    """
-    Initialize OpenAI client for BYOK proxy mode.
+def get_openai_client(
+    kentron_api_key: str,
+    openai_api_key: str,
+    policy_id: str,
+    environment: str = "demo"
+) -> OpenAI:
+    """Initialize OpenAI client for BYOK proxy mode.
     
     This client will:
     - Use your OpenAI key (stored locally, not on Kentron)
@@ -116,13 +120,20 @@ def get_openai_client(kentron_api_key: str, openai_api_key: str, policy_id: str)
         kentron_api_key: Kentron API key for authentication
         openai_api_key: OpenAI API key for BYOK mode
         policy_id: Policy ID for guardrails configuration
+        environment: Environment to use - "demo" or "prod"
     
     Returns:
         Configured OpenAI client
     """
+    # Determine base URL based on environment
+    if environment == "prod":
+        base_url = "https://app.kentron.ai/v1"
+    else:
+        base_url = "https://demo.kentron.ai/v1"
+    
     return OpenAI(
         api_key=openai_api_key,  # Your provider key (BYOK - Bring Your Own Key)
-        base_url="https://demo.kentron.ai/v1",  # Kentron proxy endpoint - use HTTPS
+        base_url=base_url,  # Kentron proxy endpoint - use HTTPS
         default_headers={
             "X-API-KEY": kentron_api_key,      # Kentron authentication
             "X-Policy-ID": policy_id,           # Which guardrails to apply
@@ -130,9 +141,14 @@ def get_openai_client(kentron_api_key: str, openai_api_key: str, policy_id: str)
     )
 
 
-def get_chat_response(prompt: str, kentron_api_key: str, openai_api_key: str, policy_id: str) -> str:
-    """
-    Get chat response from Kentron API using BYOK proxy mode.
+def get_chat_response(
+    prompt: str,
+    kentron_api_key: str,
+    openai_api_key: str,
+    policy_id: str,
+    environment: str = "demo"
+) -> str:
+    """Get chat response from Kentron API using BYOK proxy mode.
     
     The flow:
     1. Your request goes to Kentron (authenticated via X-API-KEY)
@@ -147,6 +163,7 @@ def get_chat_response(prompt: str, kentron_api_key: str, openai_api_key: str, po
         kentron_api_key: Kentron API key for authentication
         openai_api_key: OpenAI API key for BYOK mode
         policy_id: Policy ID for guardrails configuration
+        environment: Environment to use - "demo" or "prod"
         
     Returns:
         The AI response text
@@ -155,10 +172,10 @@ def get_chat_response(prompt: str, kentron_api_key: str, openai_api_key: str, po
         Exception: If the API request fails
     """
     try:
-        logger.info(f"Sending request to Kentron: {prompt[:50]}...")
+        logger.info(f"Sending request to Kentron ({environment}): {prompt[:50]}...")
         
         # Initialize client fresh for each request
-        client = get_openai_client(kentron_api_key, openai_api_key, policy_id)
+        client = get_openai_client(kentron_api_key, openai_api_key, policy_id, environment)
         
         # Debug: Print client configuration
         logger.info(f"Client base_url: {client.base_url}")
@@ -231,6 +248,8 @@ def initialize_session_state() -> None:
         st.session_state.openai_api_key = ""
     if "policy_id" not in st.session_state:
         st.session_state.policy_id = ""
+    if "environment" not in st.session_state:
+        st.session_state.environment = "demo"
     if "pending_response" not in st.session_state:
         st.session_state.pending_response = None
     if "example_prompt" not in st.session_state:
@@ -308,7 +327,8 @@ def run_single_test(
     prompt_number: int,
     kentron_api_key: str,
     openai_api_key: str,
-    policy_id: str
+    policy_id: str,
+    environment: str = "demo"
 ) -> Dict[str, Any]:
     """Run a single test prompt.
     
@@ -319,6 +339,7 @@ def run_single_test(
         kentron_api_key: Kentron API key for authentication
         openai_api_key: OpenAI API key for BYOK mode
         policy_id: Policy ID for guardrails configuration
+        environment: Environment to use - "demo" or "prod"
         
     Returns:
         Test result containing prompt, success status, response/error, and timing
@@ -340,7 +361,8 @@ def run_single_test(
             prompt=prompt,
             kentron_api_key=kentron_api_key,
             openai_api_key=openai_api_key,
-            policy_id=policy_id
+            policy_id=policy_id,
+            environment=environment
         )
         latency_s = time.perf_counter() - start_time_s
         
@@ -465,6 +487,15 @@ def main() -> None:
         st.header("🔧 API Configuration")
         st.markdown("Enter your API credentials to start chatting. You can change these anytime to use different policies or keys.")
         
+        # Environment selection
+        environment_input = st.selectbox(
+            "Environment",
+            options=["demo", "prod"],
+            index=0 if st.session_state.environment == "demo" else 1,
+            help="Choose between demo or production environment",
+            key="environment_input"
+        )
+        
         # Input fields for API keys - users can override any preset values
         kentron_api_key_input = st.text_input(
             "Kentron API Key",
@@ -497,6 +528,7 @@ def main() -> None:
                 st.session_state.kentron_api_key = kentron_api_key_input
                 st.session_state.openai_api_key = openai_api_key_input
                 st.session_state.policy_id = policy_id_input
+                st.session_state.environment = environment_input
                 st.success("Configuration saved!")
                 st.rerun()
             else:
@@ -506,6 +538,8 @@ def main() -> None:
         st.markdown("### Current Status")
         if st.session_state.kentron_api_key and st.session_state.openai_api_key and st.session_state.policy_id:
             st.success("✅ Configuration loaded")
+            env_label = "🌐 Demo" if st.session_state.environment == "demo" else "🚀 Production"
+            st.caption(f"Environment: {env_label}")
             st.caption(f"Policy ID: {st.session_state.policy_id[:8]}...")
         else:
             st.warning("⚠️ Please configure your API credentials")
@@ -519,7 +553,12 @@ def main() -> None:
             st.rerun()
     
     # Check if configured
-    config_ok = st.session_state.kentron_api_key and st.session_state.openai_api_key and st.session_state.policy_id
+    config_ok = (
+        st.session_state.kentron_api_key
+        and st.session_state.openai_api_key
+        and st.session_state.policy_id
+    )
+    environment = st.session_state.environment
     
     if config_ok:
         # Display test sections at the top
@@ -557,7 +596,8 @@ def main() -> None:
                         prompt_number=current_idx + 1,
                         kentron_api_key=st.session_state.kentron_api_key,
                         openai_api_key=st.session_state.openai_api_key,
-                        policy_id=st.session_state.policy_id
+                        policy_id=st.session_state.policy_id,
+                        environment=environment
                     )
                     
                     st.session_state.test_results.append(result)
@@ -633,7 +673,8 @@ def main() -> None:
                             prompt=st.session_state.pending_response,
                             kentron_api_key=st.session_state.kentron_api_key,
                             openai_api_key=st.session_state.openai_api_key,
-                            policy_id=st.session_state.policy_id
+                            policy_id=st.session_state.policy_id,
+                            environment=environment
                         )
                         latency_s = time.perf_counter() - start_time_s
                         # Combine content with latency so it persists in history
