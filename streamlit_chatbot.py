@@ -146,7 +146,8 @@ def get_chat_response(
     kentron_api_key: str,
     openai_api_key: str,
     policy_id: str,
-    environment: str = "demo"
+    environment: str = "demo",
+    model: str = "gpt-3.5-turbo"
 ) -> str:
     """Get chat response from Kentron API using BYOK proxy mode.
     
@@ -164,6 +165,7 @@ def get_chat_response(
         openai_api_key: OpenAI API key for BYOK mode
         policy_id: Policy ID for guardrails configuration
         environment: Environment to use - "demo" or "prod"
+        model: Model name to use for the chat completion
         
     Returns:
         The AI response text
@@ -172,7 +174,7 @@ def get_chat_response(
         Exception: If the API request fails
     """
     try:
-        logger.info(f"Sending request to Kentron ({environment}): {prompt[:50]}...")
+        logger.info(f"Sending request to Kentron ({environment}) with model {model}: {prompt[:50]}...")
         
         # Initialize client fresh for each request
         client = get_openai_client(kentron_api_key, openai_api_key, policy_id, environment)
@@ -185,7 +187,7 @@ def get_chat_response(
         # Use the OpenAI client (already configured for BYOK proxy)
         # This automatically includes all headers (X-API-KEY, X-Policy-ID)
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",  # Model to use
+            model=model,  # Model to use
             messages=[
                 {"role": "user", "content": prompt}
             ],
@@ -236,6 +238,55 @@ def get_optional_default_credentials() -> tuple[str, str, str]:
     )
 
 
+def get_available_models() -> List[str]:
+    """Get list of available AI models.
+    
+    Returns:
+        List of model names available for selection.
+    """
+    return [
+        "gpt-3.5-turbo",
+        "gpt-4o",
+        "gpt-4o-2024-05-13",
+        "gpt-4o-mini",
+        "gpt-4o-mini-audio-preview",
+        "gpt-4o-mini-realtime-preview",
+        "gpt-4o-mini-search-preview",
+        "gpt-4o-audio-preview",
+        "gpt-4o-realtime-preview",
+        "gpt-4o-search-preview",
+        "gpt-4.1",
+        "gpt-4.1-mini",
+        "gpt-4.1-nano",
+        "gpt-5",
+        "gpt-5-chat-latest",
+        "gpt-5-codex",
+        "gpt-5-mini",
+        "gpt-5-nano",
+        "gpt-5-pro",
+        "gpt-5-search-api",
+        "gpt-audio",
+        "gpt-audio-mini",
+        "gpt-image-1",
+        "gpt-image-1-mini",
+        "gpt-realtime",
+        "gpt-realtime-mini",
+        "o1",
+        "o1-mini",
+        "o1-pro",
+        "o3",
+        "o3-deep-research",
+        "o3-mini",
+        "o3-pro",
+        "o4-mini",
+        "o4-mini-deep-research",
+        "sora-2",
+        "sora-2-pro",
+        "codex-mini-latest",
+        "computer-use-preview",
+    ]
+
+
 def initialize_session_state() -> None:
     """Initialize Streamlit session state variables."""
     if "messages" not in st.session_state:
@@ -250,6 +301,8 @@ def initialize_session_state() -> None:
         st.session_state.policy_id = ""
     if "environment" not in st.session_state:
         st.session_state.environment = "demo"
+    if "model" not in st.session_state:
+        st.session_state.model = "gpt-3.5-turbo"
     if "pending_response" not in st.session_state:
         st.session_state.pending_response = None
     if "example_prompt" not in st.session_state:
@@ -328,7 +381,8 @@ def run_single_test(
     kentron_api_key: str,
     openai_api_key: str,
     policy_id: str,
-    environment: str = "demo"
+    environment: str = "demo",
+    model: str = "gpt-3.5-turbo"
 ) -> Dict[str, Any]:
     """Run a single test prompt.
     
@@ -340,6 +394,7 @@ def run_single_test(
         openai_api_key: OpenAI API key for BYOK mode
         policy_id: Policy ID for guardrails configuration
         environment: Environment to use - "demo" or "prod"
+        model: Model name to use for the chat completion
         
     Returns:
         Test result containing prompt, success status, response/error, and timing
@@ -362,7 +417,8 @@ def run_single_test(
             kentron_api_key=kentron_api_key,
             openai_api_key=openai_api_key,
             policy_id=policy_id,
-            environment=environment
+            environment=environment,
+            model=model
         )
         latency_s = time.perf_counter() - start_time_s
         
@@ -496,6 +552,21 @@ def main() -> None:
             key="environment_input"
         )
         
+        # Model selection
+        available_models = get_available_models()
+        model_index = (
+            available_models.index(st.session_state.model)
+            if st.session_state.model in available_models
+            else 0
+        )
+        model_input = st.selectbox(
+            "Model",
+            options=available_models,
+            index=model_index,
+            help="Select the AI model to use for chat completions",
+            key="model_input"
+        )
+        
         # Input fields for API keys - users can override any preset values
         kentron_api_key_input = st.text_input(
             "Kentron API Key",
@@ -529,6 +600,7 @@ def main() -> None:
                 st.session_state.openai_api_key = openai_api_key_input
                 st.session_state.policy_id = policy_id_input
                 st.session_state.environment = environment_input
+                st.session_state.model = model_input
                 st.success("Configuration saved!")
                 st.rerun()
             else:
@@ -540,6 +612,7 @@ def main() -> None:
             st.success("✅ Configuration loaded")
             env_label = "🌐 Demo" if st.session_state.environment == "demo" else "🚀 Production"
             st.caption(f"Environment: {env_label}")
+            st.caption(f"Model: {st.session_state.model}")
             st.caption(f"Policy ID: {st.session_state.policy_id[:8]}...")
         else:
             st.warning("⚠️ Please configure your API credentials")
@@ -559,6 +632,7 @@ def main() -> None:
         and st.session_state.policy_id
     )
     environment = st.session_state.environment
+    model = st.session_state.model
     
     if config_ok:
         # Display test sections at the top
@@ -597,7 +671,8 @@ def main() -> None:
                         kentron_api_key=st.session_state.kentron_api_key,
                         openai_api_key=st.session_state.openai_api_key,
                         policy_id=st.session_state.policy_id,
-                        environment=environment
+                        environment=environment,
+                        model=model
                     )
                     
                     st.session_state.test_results.append(result)
@@ -674,7 +749,8 @@ def main() -> None:
                             kentron_api_key=st.session_state.kentron_api_key,
                             openai_api_key=st.session_state.openai_api_key,
                             policy_id=st.session_state.policy_id,
-                            environment=environment
+                            environment=environment,
+                            model=model
                         )
                         latency_s = time.perf_counter() - start_time_s
                         # Combine content with latency so it persists in history
